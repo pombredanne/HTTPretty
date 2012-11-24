@@ -1,8 +1,9 @@
-all: check_dependencies unit functional
+all: check_dependencies unit functional doctests
 
 filename=httpretty-`python -c 'import httpretty;print httpretty.version'`.tar.gz
 
 export HTTPRETTY_DEPENDENCIES:= nose sure
+export PYTHONPATH:= ${PWD}
 
 check_dependencies:
 	@echo "Checking for dependencies to run tests ..."
@@ -18,12 +19,15 @@ functional: clean
 	@echo "Running functional tests ..."
 	@nosetests -s --verbosity=2 --with-coverage --cover-erase --cover-inclusive tests/functional --cover-package=httpretty
 
+doctests: clean
+	@echo "Running documentation tests tests ..."
+	@steadymark README.md
+
 clean:
 	@printf "Cleaning up files that are already in .gitignore... "
 	@for pattern in `cat .gitignore`; do rm -rf $$pattern; done
 	@echo "OK!"
 
 release: clean unit functional
-	@printf "Exporting to $(filename)... "
-	@tar czf $(filename) httpretty setup.py README.md COPYING
-	@echo "DONE!"
+	@echo "Releasing httpretty..."
+	@python setup.py sdist register upload

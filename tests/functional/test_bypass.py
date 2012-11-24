@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # <HTTPretty - HTTP client mock for Python>
-# Copyright (C) <2011>  Gabriel Falcão <gabriel@nacaolivre.org>
+# Copyright (C) <2011-2012>  Gabriel Falcão <gabriel@nacaolivre.org>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
@@ -43,7 +43,7 @@ def stop_server(context):
 
 @httprettified
 @that_with_context(start_server, stop_server)
-def test_httpretty_bypasses_when_disabled():
+def test_httpretty_bypasses_when_disabled(context):
     u"HTTPretty should bypass all requests by disabling it"
 
     HTTPretty.register_uri(
@@ -76,7 +76,7 @@ def test_httpretty_bypasses_when_disabled():
 
 @httprettified
 @that_with_context(start_server, stop_server)
-def test_httpretty_bypasses_a_unregistered_request():
+def test_httpretty_bypasses_a_unregistered_request(context):
     u"HTTPretty should bypass a unregistered request by disabling it"
 
     HTTPretty.register_uri(

@@ -1,7 +1,7 @@
 # #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # <HTTPretty - HTTP client mock for Python>
-# Copyright (C) <2011>  Gabriel Falcão <gabriel@nacaolivre.org>
+# Copyright (C) <2011-2012>  Gabriel Falcão <gabriel@nacaolivre.org>
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
@@ -23,7 +23,7 @@
 # WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
-version = '0.4'
+version = '0.5.4'
 
 import re
 import socket
@@ -68,10 +68,17 @@ class HTTPrettyError(Exception):
     pass
 
 
-class HTTPrettyRequest(BaseHTTPRequestHandler):
+def utf8(s):
+    if isinstance(s, unicode):
+        s = s.encode('utf-8')
+
+    return str(s)
+
+
+class HTTPrettyRequest(BaseHTTPRequestHandler, object):
     def __init__(self, headers, body=''):
-        self.body = body
-        self.raw_headers = headers
+        self.body = utf8(body)
+        self.raw_headers = utf8(headers)
 
         self.rfile = StringIO(headers + body)
         self.raw_requestline = self.rfile.readline()
@@ -177,7 +184,7 @@ class fakesock(object):
                 self.truesock.close()
             self._closed = True
 
-        def makefile(self, mode, bufsize):
+        def makefile(self, mode='r', bufsize=-1):
             self._mode = mode
             self._bufsize = bufsize
 
@@ -189,11 +196,11 @@ class fakesock(object):
         def _true_sendall(self, data, *args, **kw):
             self.truesock.connect(self._address)
             self.truesock.sendall(data, *args, **kw)
-            _d = self.truesock.recv(255)
+            _d = self.truesock.recv(16)
             self.fd.seek(0)
             self.fd.write(_d)
             while _d:
-                _d = self.truesock.recv(255)
+                _d = self.truesock.recv(16)
                 self.fd.write(_d)
 
             self.fd.seek(0)
@@ -215,7 +222,7 @@ class fakesock(object):
 
             if not is_parsing_headers:
                 if len(self._sent_data) > 1:
-                    headers, body = self._sent_data[-2:]
+                    headers, body = map(utf8, self._sent_data[-2:])
                     try:
                         return HTTPretty.historify_request(headers, body)
 
@@ -224,10 +231,16 @@ class fakesock(object):
                         return self._true_sendall(data, *args, **kw)
 
             method, path, version = re.split('\s+', verb.strip(), 3)
+            # path might come with
+            s = urlsplit(path)
 
-            request = HTTPretty.historify_request(data)
+            headers, body = map(utf8, data.split('\r\n\r\n'))
 
-            info = URIInfo(hostname=self._host, port=self._port, path=path,
+            request = HTTPretty.historify_request(headers, body)
+
+            info = URIInfo(hostname=self._host, port=self._port,
+                           path=s.path,
+                           query=s.query,
                            last_request=request)
 
             entries = []
@@ -247,6 +260,9 @@ class fakesock(object):
 
         def debug(*a, **kw):
             import debug
+
+        def settimeout(self, new_timeout):
+            self.timeout = new_timeout
 
         sendto = send = recvfrom_into = recv_into = recvfrom = recv = debug
 
@@ -281,6 +297,7 @@ def fake_getaddrinfo(
 STATUSES = {
     100: "Continue",
     101: "Switching Protocols",
+    102: "Processing",
     200: "OK",
     201: "Created",
     202: "Accepted",
@@ -288,13 +305,18 @@ STATUSES = {
     204: "No Content",
     205: "Reset Content",
     206: "Partial Content",
+    207: "Multi-Status",
+    208: "Already Reported",
+    226: "IM Used",
     300: "Multiple Choices",
     301: "Moved Permanently",
     302: "Found",
     303: "See Other",
     304: "Not Modified",
     305: "Use Proxy",
+    306: "Switch Proxy",
     307: "Temporary Redirect",
+    308: "Permanent Redirect",
     400: "Bad Request",
     401: "Unauthorized",
     402: "Payment Required",
@@ -303,22 +325,51 @@ STATUSES = {
     405: "Method Not Allowed",
     406: "Not Acceptable",
     407: "Proxy Authentication Required",
-    408: "Request Time-out",
+    408: "Request a Timeout",
     409: "Conflict",
     410: "Gone",
     411: "Length Required",
     412: "Precondition Failed",
     413: "Request Entity Too Large",
-    414: "Request-URI Too Large",
+    414: "Request-URI Too Long",
     415: "Unsupported Media Type",
-    416: "Requested range not satisfiable",
+    416: "Requested Range Not Satisfiable",
     417: "Expectation Failed",
+    418: "I'm a teapot",
+    420: "Enhance Your Calm",
+    422: "Unprocessable Entity",
+    423: "Locked",
+    424: "Failed Dependency",
+    424: "Method Failure",
+    425: "Unordered Collection",
+    426: "Upgrade Required",
+    428: "Precondition Required",
+    429: "Too Many Requests",
+    431: "Request Header Fields Too Large",
+    444: "No Response",
+    449: "Retry With",
+    450: "Blocked by Windows Parental Controls",
+    451: "Unavailable For Legal Reasons",
+    451: "Redirect",
+    494: "Request Header Too Large",
+    495: "Cert Error",
+    496: "No Cert",
+    497: "HTTP to HTTPS",
+    499: "Client Closed Request",
     500: "Internal Server Error",
     501: "Not Implemented",
     502: "Bad Gateway",
     503: "Service Unavailable",
-    504: "Gateway Time-out",
-    505: "HTTP Version not supported",
+    504: "Gateway Timeout",
+    505: "HTTP Version Not Supported",
+    506: "Variant Also Negotiates",
+    507: "Insufficient Storage",
+    508: "Loop Detected",
+    509: "Bandwidth Limit Exceeded",
+    510: "Not Extended",
+    511: "Network Authentication Required",
+    598: "Network read timeout error",
+    599: "Network connect timeout error",
 }
 
 
@@ -327,12 +378,17 @@ class Entry(object):
                  adding_headers=None,
                  forcing_headers=None,
                  status=200,
+                 streaming=False,
                  **headers):
 
         self.method = method
         self.uri = uri
         self.body = body
-        self.body_length = len(body or '')
+        self.streaming = streaming
+        if not streaming:
+            self.body_length = len(body or '')
+        else:
+            self.body_length = 0
         self.adding_headers = adding_headers or {}
         self.forcing_headers = forcing_headers or {}
         self.status = int(status)
@@ -344,7 +400,7 @@ class Entry(object):
         self.validate()
 
     def validate(self):
-        content_length_keys = 'Content-Length', 'content-cength'
+        content_length_keys = 'Content-Length', 'content-length'
         for key in content_length_keys:
             got = self.adding_headers.get(
                 key, self.forcing_headers.get(key, None))
@@ -365,8 +421,7 @@ class Entry(object):
                     'HTTPretty got inconsistent parameters. The header ' \
                     'Content-Length you registered expects size "%d" but ' \
                     'the body you registered for that has actually length ' \
-                    '"%d".\nFix that, or if you really want that, call ' \
-                    'register_uri with "fill_with" callback.' % (
+                    '"%d".' % (
                         igot, self.body_length,
                     )
                 )
@@ -374,6 +429,14 @@ class Entry(object):
     def __repr__(self):
         return r'<Entry %s %s getting %d>' % (
             self.method, self.uri, self.status)
+
+    def normalize_headers(self, headers):
+        new = {}
+        for k in headers:
+            new_k = '-'.join([s.title() for s in k.split('-')])
+            new[new_k] = headers[k]
+
+        return new
 
     def fill_filekind(self, fk):
         now = datetime.utcnow()
@@ -391,8 +454,9 @@ class Entry(object):
         if self.adding_headers:
             headers.update(self.adding_headers)
 
-        status = headers.get('Status', self.status)
+        headers = self.normalize_headers(headers)
 
+        status = headers.get('Status', self.status)
         string_list = [
             'HTTP/1.1 %d %s' % (status, STATUSES[status]),
         ]
@@ -403,22 +467,29 @@ class Entry(object):
         if not self.forcing_headers:
             content_type = headers.pop('Content-Type',
                                        'text/plain; charset=utf-8')
-            content_length = headers.pop('Content-Length', len(self.body))
-            string_list.append(
-                'Content-Type: %s' % content_type)
-            string_list.append(
-                'Content-Length: %s' % content_length)
 
-            string_list.append('Server: %s' % headers.pop('Server')),
+            content_length = headers.pop('Content-Length', self.body_length)
+
+            string_list.append('Content-Type: %s' % content_type)
+            if not self.streaming:
+                string_list.append('Content-Length: %s' % content_length)
+
+            string_list.append('Server: %s' % headers.pop('Server'))
 
         for k, v in headers.items():
             string_list.append(
-                '%s: %s' % (k, unicode(v)),
+                '%s: %s' % (k, utf8(v)),
             )
 
         fk.write("\n".join(string_list))
         fk.write('\n\r\n')
-        fk.write(self.body)
+
+        if self.streaming:
+            for chunk in self.body:
+                fk.write(utf8(chunk))
+        else:
+            fk.write(utf8(self.body))
+
         fk.seek(0)
 
 
@@ -473,8 +544,6 @@ class URIInfo(object):
             'hostname',
             'port',
             'path',
-            'query',
-            'fragment',
         )
         fmt = ", ".join(['%s="%s"' % (k, getattr(self, k, '')) for k in attrs])
         return ur'<httpretty.URIInfo(%s)>' % fmt
@@ -554,12 +623,13 @@ class HTTPretty(object):
 
     @classmethod
     def Response(cls, body, adding_headers=None, forcing_headers=None,
-                 status=200, **headers):
+                 status=200, streaming=False, **headers):
 
         headers['body'] = body
         headers['adding_headers'] = adding_headers
         headers['forcing_headers'] = forcing_headers
-        headers['status'] = status
+        headers['status'] = int(status)
+        headers['streaming'] = streaming
         return Entry(method=None, uri=None, **headers)
 
     @classmethod
