@@ -28,25 +28,33 @@
 
 import os
 from httpretty import version, HTTPretty
-from setuptools import setup
+from setuptools import setup, find_packages
 
 HTTPretty.disable()
 
+HTTPRETTY_PATH = os.path.abspath(os.path.join(__file__, os.pardir))
 
-def get_packages():
-    # setuptools can't do the job :(
-    packages = []
-    for root, dirnames, filenames in os.walk('httpretty'):
-        if '__init__.py' in filenames:
-            packages.append(".".join(os.path.split(root)).strip("."))
 
-    return packages
+def test_packages():
+    test_reqs = os.path.join(HTTPRETTY_PATH, 'requirements.pip')
+    tests_require = [
+            line.strip() for line in open(test_reqs).readlines()
+            if not line.startswith("#")
+        ]
+    return tests_require
 
 setup(name='httpretty',
     version=version,
     description='HTTP client mock for Python',
-    author=u'Gabriel Falcao',
+    author='Gabriel Falcao',
     author_email='gabriel@nacaolivre.org',
     url='http://github.com/gabrielfalcao/httpretty',
-    packages=get_packages()
+    zip_safe=False,
+    packages=find_packages(HTTPRETTY_PATH, ('tests')),
+    tests_require=test_packages(),
+    install_requires=['urllib3'],
+    license='MIT',
+    classifiers=["Intended Audience :: Developers",
+                 "License :: OSI Approved :: MIT License",
+                 "Topic :: Software Development :: Testing"],
 )

@@ -25,23 +25,20 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 from __future__ import unicode_literals
 
-__version__ = version = '0.7.0'
-
-import sys
-
-from .core import httpretty, httprettified
-from .errors import HTTPrettyError
-from .core import URIInfo
-
-HTTPretty = httpretty
-activate = httprettified
-
-SELF = sys.modules[__name__]
-
-for attr in [name.decode() for name in httpretty.METHODS] + ['register_uri', 'enable', 'disable', 'is_enabled', 'reset', 'Response']:
-    setattr(SELF, attr, getattr(httpretty, attr))
+from .compat import (
+    byte_type, text_type
+)
 
 
-def last_request():
-    """returns the last request"""
-    return httpretty.last_request
+def utf8(s):
+    if isinstance(s, text_type):
+        s = s.encode('utf-8')
+
+    return byte_type(s)
+
+
+def decode_utf8(s):
+    if isinstance(s, byte_type):
+        s = s.decode("utf-8")
+
+    return text_type(s)
